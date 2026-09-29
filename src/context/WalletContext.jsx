@@ -18,6 +18,9 @@ function paraEntrada(l) {
     desc: l.descricao,
     tipo: l.tipo,
     value: l.tipo === "CREDITO" ? valor : -valor,
+    tipoTransacao: l.tipoTransacao,
+    tipoChave: l.tipoChave,
+    chave: l.chaveDestino,
   };
 }
 
@@ -63,9 +66,10 @@ export function WalletProvider({ children }) {
    *   Se a tentativa falhar por rede, a tela reenvia com a MESMA chave — é isso
    *   que garante que um retry nunca debita duas vezes.
    */
-  async function sendPix({ key, value, idempotencyKey }) {
+  async function sendPix({ tipoChave = "CPF", key, value, idempotencyKey }) {
     try {
       const resultado = await api.post("/pix/transferir", {
+        tipoChave,
         chaveDestino: key,
         valor: value,
         idempotencyKey,

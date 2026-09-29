@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Pix from "./pages/Pix";
 import Cartao from "./pages/Cartao";
 import Extrato from "./pages/Extrato";
+import Contatos from "./pages/Contatos";
 
 export default function App() {
   return (
@@ -38,6 +39,16 @@ export default function App() {
                 <ProtectedRoute>
                   <DashboardShell>
                     <Pix />
+                  </DashboardShell>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/contatos"
+              element={
+                <ProtectedRoute>
+                  <DashboardShell>
+                    <Contatos />
                   </DashboardShell>
                 </ProtectedRoute>
               }

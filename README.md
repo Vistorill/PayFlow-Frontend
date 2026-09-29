@@ -26,13 +26,30 @@ Acesse `http://localhost:5173`.
 
 ## Contas de teste (criadas pelo seed do backend)
 
-| Email | Senha | CPF (chave Pix) |
-|---|---|---|
-| ana@email.com | senha1234 | 111.444.777-35 |
-| bruno@email.com | senha1234 | 123.456.789-09 |
+| Email | Senha | CPF | Celular |
+|---|---|---|---|
+| ana@email.com | senha1234 | 111.444.777-35 | (11) 98888-1111 |
+| bruno@email.com | senha1234 | 123.456.789-09 | (11) 97777-2222 |
 
-O login já vem preenchido com a Ana. Faça um Pix para o CPF do Bruno.
-Também dá para criar conta nova em `/cadastro` (CPF precisa ser válido).
+O login já vem preenchido com a Ana. No Pix, escolha o tipo de chave
+(**CPF**, **E-mail** ou **Celular**) e use qualquer uma das chaves do Bruno.
+Também dá para criar conta nova em `/cadastro` (CPF precisa ser válido;
+celular é opcional e vira chave Pix).
+
+## Contatos Pix
+
+Em **Contatos** você salva chaves (CPF, e-mail ou celular) de quem paga com
+frequência. O backend confere se a chave existe e mostra o nome do dono antes
+de salvar. Na tela de Pix, a aba **Meus contatos** lista só os seus contatos
+num select; a aba **Digitar chave** tem a opção de salvar a chave após o envio.
+O seed já cria o contato "Bruno" (celular) para a Ana.
+
+**Pix para outro banco:** se a chave não for de um cliente PayFlow, a tela de
+Contatos pede o **nome do favorecido** e o **banco**. Depois de salva, a chave
+pode ser paga normalmente: o backend debita sua conta e credita a conta de
+liquidação Pix (SPI) do sistema, como um banco real faz num cash-out. O
+comprovante mostra o favorecido e o banco. Sem acesso ao DICT do Bacen, o nome
+do dono de uma chave externa não pode ser confirmado.
 
 ## Idempotência do Pix
 
@@ -78,6 +95,7 @@ src/
 | `/cadastro` | Abrir conta (`POST /api/auth/register`) |
 | `/app` | Dashboard (protegida) |
 | `/app/pix` | Transferências Pix (protegida) |
+| `/app/contatos` | Contatos Pix salvos: cadastrar, remover, pagar (protegida) |
 | `/app/cartao` | Cartão (protegida) |
 | `/app/extrato` | Extrato (protegida) |
 

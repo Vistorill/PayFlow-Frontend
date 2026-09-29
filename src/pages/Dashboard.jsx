@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, ArrowDownRight, Send, CreditCard, Landmark } from "lucide-react";
 import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 import { creditOffer } from "../data/mockData";
+import TransacaoDetalhe from "../components/TransacaoDetalhe";
 
 const currency = (v) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -28,6 +29,7 @@ export default function Dashboard() {
   const { balance, ledger, loading, error } = useWallet();
   const { user } = useAuth();
   const recent = ledger.slice(0, 5);
+  const [aberta, setAberta] = useState(null);
   const balanceHistory = useMemo(() => historicoDeSaldo(ledger, balance), [ledger, balance]);
 
   return (
@@ -116,7 +118,11 @@ export default function Dashboard() {
         )}
         <ul className="divide-y divide-base-800">
           {recent.map((t) => (
-            <li key={t.id} className="flex items-center justify-between py-3">
+            <li
+              key={t.id}
+              onClick={() => setAberta(t.transacaoId)}
+              className="flex items-center justify-between py-3 cursor-pointer hover:bg-base-850 -mx-2 px-2 rounded-lg transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <div
                   className={`h-9 w-9 rounded-full flex items-center justify-center ${
@@ -140,6 +146,8 @@ export default function Dashboard() {
           ))}
         </ul>
       </div>
+
+      {aberta && <TransacaoDetalhe transacaoId={aberta} onClose={() => setAberta(null)} />}
     </div>
   );
 }

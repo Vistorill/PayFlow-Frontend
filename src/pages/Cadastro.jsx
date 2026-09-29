@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { formatarCpf, isCpfValido } from "../utils/cpf";
+import { formatarTelefone, isTelefoneValido } from "../utils/chavePix";
 
 const inputClass =
   "w-full rounded-lg bg-field text-base-950 placeholder:text-base-600 px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-500";
 
 export default function Cadastro() {
-  const [form, setForm] = useState({ nome: "", email: "", cpf: "", senha: "" });
+  const [form, setForm] = useState({ nome: "", email: "", cpf: "", telefone: "", senha: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -15,7 +16,8 @@ export default function Cadastro() {
 
   function set(campo) {
     return (e) => {
-      const v = campo === "cpf" ? formatarCpf(e.target.value) : e.target.value;
+      const formatar = { cpf: formatarCpf, telefone: formatarTelefone }[campo];
+      const v = formatar ? formatar(e.target.value) : e.target.value;
       setForm((f) => ({ ...f, [campo]: v }));
     };
   }
@@ -27,6 +29,10 @@ export default function Cadastro() {
     // Pré-validação de UX. O backend valida tudo de novo (é ele quem decide).
     if (!isCpfValido(form.cpf)) {
       setError("CPF inválido — confira os dígitos.");
+      return;
+    }
+    if (form.telefone && !isTelefoneValido(form.telefone)) {
+      setError("Celular inválido — informe DDD + número.");
       return;
     }
     if (form.senha.length < 8 || form.senha.length > 72) {
@@ -57,7 +63,7 @@ export default function Cadastro() {
 
         <h2 className="font-display text-2xl font-semibold mb-1">Abrir conta</h2>
         <p className="text-sm text-ink-500 mb-6">
-          Seu CPF será também sua chave Pix para receber transferências.
+          Seu CPF, e-mail e celular viram chaves Pix para receber transferências.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -79,6 +85,18 @@ export default function Cadastro() {
           <div>
             <label className="block text-xs font-medium text-ink-300 mb-1.5">Email</label>
             <input type="email" value={form.email} onChange={set("email")} className={inputClass} required />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-300 mb-1.5">
+              Celular <span className="text-ink-500 font-normal">(opcional — vira chave Pix)</span>
+            </label>
+            <input
+              value={form.telefone}
+              onChange={set("telefone")}
+              className={inputClass}
+              placeholder="(11) 98888-1111"
+              inputMode="tel"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-ink-300 mb-1.5">Senha</label>

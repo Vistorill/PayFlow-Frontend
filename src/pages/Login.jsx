@@ -135,7 +135,8 @@ export default function Login() {
           <div className="mt-6 pt-5 border-t border-base-700">
             <p className="text-[11px] text-ink-500">
               Demo — conta de teste já preenchida (ana@email.com / senha1234).
-              Para testar Pix, use o CPF do Bruno como chave: 123.456.789-09.
+              Para testar Pix, use uma chave do Bruno: CPF 123.456.789-09,
+              e-mail bruno@email.com ou celular (11) 97777-2222.
             </p>
           </div>
         </div>

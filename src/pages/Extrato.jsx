@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Search } from "lucide-react";
 import { useWallet } from "../context/WalletContext";
+import TransacaoDetalhe from "../components/TransacaoDetalhe";
+
+const TIPO_CHAVE = { CPF: "CPF", EMAIL: "E-mail", TELEFONE: "Celular" };
 
 const currency = (v) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -15,12 +18,17 @@ export default function Extrato() {
   const { ledger, total, loading, error } = useWallet();
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [aberta, setAberta] = useState(null); // transacaoId do detalhe aberto
 
   const filtered = useMemo(() => {
     return ledger.filter((t) => {
       if (filter === "in" && t.value < 0) return false;
       if (filter === "out" && t.value >= 0) return false;
-      if (query && !t.desc.toLowerCase().includes(query.toLowerCase())) return false;
+      if (query) {
+        const q = query.toLowerCase();
+        const alvo = `${t.desc} ${t.chave ?? ""}`.toLowerCase();
+        if (!alvo.includes(q)) return false;
+      }
       return true;
     });
   }, [ledger, filter, query]);
@@ -30,7 +38,7 @@ export default function Extrato() {
       <div>
         <h1 className="font-display text-2xl font-semibold">Extrato</h1>
         <p className="text-sm text-ink-500 mt-1">
-          Lançamentos do ledger da sua conta (append-only){total ? ` · ${total} no total` : ""}.
+          Toque em um lançamento para ver o comprovante. Lançamentos do ledger da sua conta (append-only){total ? ` · ${total} no total` : ""}.
         </p>
       </div>
 
@@ -40,7 +48,7 @@ export default function Extrato() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar por descrição…"
+            placeholder="Buscar por descrição ou chave Pix…"
             className="w-full rounded-lg bg-field text-base-950 placeholder:text-base-600 pl-9 pr-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
@@ -70,7 +78,11 @@ export default function Extrato() {
           <p className="p-6 text-sm text-ink-500 text-center">Nenhum lançamento encontrado.</p>
         )}
         {filtered.map((t) => (
-          <div key={t.id} className="flex items-center justify-between px-5 py-4">
+          <button
+            key={t.id}
+            onClick={() => setAberta(t.transacaoId)}
+            className="w-full text-left flex items-center justify-between px-5 py-4 hover:bg-base-850 transition-colors first:rounded-t-2xl last:rounded-b-2xl"
+          >
             <div className="flex items-center gap-3">
               <div
                 className={`h-9 w-9 rounded-full flex items-center justify-center ${
@@ -81,6 +93,11 @@ export default function Extrato() {
               </div>
               <div>
                 <p className="text-sm font-medium">{t.desc}</p>
+                {t.chave && (
+                  <p className="text-xs text-brand-300">
+                    Chave {TIPO_CHAVE[t.tipoChave] ?? t.tipoChave}: {t.chave}
+                  </p>
+                )}
                 <p className="text-xs text-ink-500">
                   {new Date(t.date).toLocaleString("pt-BR", {
                     day: "2-digit",
@@ -95,9 +112,11 @@ export default function Extrato() {
               {t.value >= 0 ? "+" : ""}
               {currency(t.value)}
             </p>
-          </div>
+          </button>
         ))}
       </div>
+
+      {aberta && <TransacaoDetalhe transacaoId={aberta} onClose={() => setAberta(null)} />}
     </div>
   );
 }
