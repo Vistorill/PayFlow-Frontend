@@ -65,11 +65,12 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function register({ nome, email, cpf, senha }) {
+  async function register({ nome, email, cpf, telefone, senha }) {
     try {
       const data = await api.post(
         "/auth/register",
-        { nome: nome.trim(), email: email.trim(), cpf, senha },
+        // telefone é opcional: string vazia não vai para a API.
+        { nome: nome.trim(), email: email.trim(), cpf, senha, ...(telefone ? { telefone } : {}) },
         { auth: false },
       );
       iniciarSessao(data);

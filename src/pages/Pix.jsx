@@ -1,8 +1,12 @@
 import { useRef, useState } from "react";
-import { Send, CheckCircle2, KeyRound, AlertTriangle } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Send, CheckCircle2, KeyRound, AlertTriangle, BookUser, UserRound, Landmark } from "lucide-react";
 import { useWallet } from "../context/WalletContext";
+import { useContatos } from "../hooks/useContatos";
 import { novaIdempotencyKey } from "../utils/idempotencia";
-import { formatarCpf, isCpfValido } from "../utils/cpf";
+import { TIPOS_CHAVE } from "../utils/chavePix";
+
+const ROTULO_TIPO = { CPF: "CPF", EMAIL: "E-mail", TELEFONE: "Celular" };
 
 const currency = (v) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -13,6 +17,9 @@ const MENSAGENS = {
   DESTINO_IGUAL_ORIGEM: "Não é possível transferir para você mesmo.",
   TRANSACAO_EM_PROCESSAMENTO:
     "Sua transferência anterior ainda está sendo processada. Aguarde e tente novamente.",
+  CHAVE_INVALIDA: "Chave Pix inválida para o tipo escolhido.",
+  CHAVE_NAO_ENCONTRADA:
+    "Chave não encontrada no PayFlow. Se ela for de outro banco, salve-a em Contatos (com o nome do favorecido) para poder pagar.",
   TRANSACAO_ANTERIOR_FALHOU: "A tentativa anterior falhou. Envie novamente para gerar uma nova tentativa.",
 };
 
@@ -39,6 +46,14 @@ function normalizarValor(texto) {
 
 export default function Pix() {
   const { balance, sendPix } = useWallet();
+  const { contatos, loading: carregandoContatos, criar: criarContato } = useContatos();
+  const [searchParams] = useSearchParams();
+  // "contato" = escolher da agenda; "manual" = digitar a chave.
+  // null até o usuário escolher: aí o padrão depende de haver contatos salvos.
+  const [modoEscolhido, setModoEscolhido] = useState(searchParams.get("contato") ? "contato" : null);
+  const [contatoId, setContatoId] = useState(searchParams.get("contato") ?? "");
+  const [salvarContato, setSalvarContato] = useState(false);
+  const [tipoChave, setTipoChave] = useState(TIPOS_CHAVE[0]);
   const [pixKey, setPixKey] = useState("");
   const [value, setValue] = useState("");
   const [feedback, setFeedback] = useState(null);
@@ -53,14 +68,36 @@ export default function Pix() {
     idempotencyKeyRef.current = null;
   }
 
+  const modo = modoEscolhido ?? (!carregandoContatos && contatos.length > 0 ? "contato" : "manual");
+  const contato = contatos.find((c) => c.id === contatoId) ?? null;
+
+  function trocarModo(novo) {
+    if (novo === modo) return;
+    setModoEscolhido(novo);
+    setFeedback(null);
+    novaIntencao();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (loading) return; // clique duplo não gera duas requisições
     setFeedback(null);
 
-    if (!isCpfValido(pixKey)) {
-      setFeedback({ ok: false, message: "CPF inválido — confira a chave Pix." });
-      return;
+    // O destino sai do contato salvo OU do que foi digitado. Em ambos os casos
+    // o backend recebe tipoChave + chave e resolve o dono de novo.
+    let destino;
+    if (modo === "contato") {
+      if (!contato) {
+        setFeedback({ ok: false, message: "Escolha um contato." });
+        return;
+      }
+      destino = { tipoChave: contato.tipoChave, key: contato.chave };
+    } else {
+      if (!tipoChave.validar(pixKey)) {
+        setFeedback({ ok: false, message: tipoChave.erro });
+        return;
+      }
+      destino = { tipoChave: tipoChave.id, key: pixKey };
     }
     const valor = normalizarValor(value);
     if (!/^\d+(\.\d{1,2})?$/.test(valor) || Number(valor) <= 0) {
@@ -72,16 +109,23 @@ export default function Pix() {
     const idempotencyKey = idempotencyKeyRef.current;
 
     setLoading(true);
-    const result = await sendPix({ key: pixKey, value: valor, idempotencyKey });
-    setLoading(false);
+    const result = await sendPix({ ...destino, value: valor, idempotencyKey });
 
     if (result.ok) {
       novaIntencao();
-      setFeedback({ ok: true, resultado: result.resultado });
+      let contatoSalvo = null;
+      if (modo === "manual" && salvarContato) {
+        const c = await criarContato({ tipoChave: destino.tipoChave, chave: destino.key });
+        contatoSalvo = c.ok ? "salvo" : c.codigo === "CONTATO_JA_EXISTE" ? "existente" : null;
+      }
+      setLoading(false);
+      setFeedback({ ok: true, resultado: result.resultado, contatoSalvo });
       setPixKey("");
       setValue("");
+      setSalvarContato(false);
       return;
     }
+    setLoading(false);
 
     const podeReenviarMesmaChave = result.network || result.codigo === "TRANSACAO_EM_PROCESSAMENTO";
     if (!podeReenviarMesmaChave) novaIntencao();
@@ -100,25 +144,150 @@ export default function Pix() {
       </div>
 
       <form onSubmit={handleSubmit} className="rounded-2xl border border-base-700 bg-base-900 p-6 space-y-5">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-base-850 border border-base-700">
+          {[
+            { id: "contato", label: "Meus contatos", icon: BookUser },
+            { id: "manual", label: "Digitar chave", icon: KeyRound },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              type="button"
+              key={id}
+              onClick={() => trocarModo(id)}
+              className={`flex items-center justify-center gap-2 text-sm py-2 rounded-md transition-colors ${
+                modo === id ? "bg-brand-500/20 text-brand-300 font-medium" : "text-ink-500 hover:text-ink-100"
+              }`}
+            >
+              <Icon size={15} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {modo === "contato" && (
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="contato" className="block text-xs font-medium text-ink-300 mb-1.5">
+                Contato
+              </label>
+              <select
+                id="contato"
+                value={contatoId}
+                onChange={(e) => {
+                  setContatoId(e.target.value);
+                  setFeedback(null);
+                  novaIntencao();
+                }}
+                disabled={carregandoContatos || contatos.length === 0}
+                className="w-full rounded-lg bg-field text-base-950 px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60"
+              >
+                <option value="">
+                  {carregandoContatos
+                    ? "Carregando contatos…"
+                    : contatos.length === 0
+                      ? "Nenhum contato salvo"
+                      : "Selecione um contato"}
+                </option>
+                {contatos.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.apelido ? `${c.apelido} (${c.destino.nome})` : c.destino.nome} — {ROTULO_TIPO[c.tipoChave]}:{" "}
+                    {c.chave}
+                    {c.destino.externo ? ` · ${c.destino.banco ?? "outro banco"}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {contato && (
+              <div className="rounded-xl border border-base-700 bg-base-850 px-4 py-3 flex items-center gap-3">
+                <div
+                  className={`h-9 w-9 shrink-0 rounded-full flex items-center justify-center ${
+                    contato.destino.externo ? "bg-amber-500/10 text-amber-300" : "bg-brand-500/10 text-brand-400"
+                  }`}
+                >
+                  {contato.destino.externo ? <Landmark size={16} /> : <UserRound size={16} />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{contato.destino.nome}</p>
+                  <p className="text-xs text-ink-500 truncate">
+                    {ROTULO_TIPO[contato.tipoChave]}: {contato.chave} ·{" "}
+                    {contato.destino.externo ? (
+                      <span className="text-amber-300">{contato.destino.banco ?? "Outro banco"} · Pix para outro banco</span>
+                    ) : (
+                      <>CPF {contato.destino.cpf}</>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-ink-500">
+              {contatos.length === 0 && !carregandoContatos ? "Você ainda não tem contatos. " : ""}
+              <Link to="/app/contatos" className="text-brand-400 hover:text-brand-300">
+                Gerenciar contatos
+              </Link>
+            </p>
+          </div>
+        )}
+
+        {modo === "manual" && (
+        <>
+        <div>
+          <label className="block text-xs font-medium text-ink-300 mb-2">Tipo de chave</label>
+          <div className="flex flex-wrap gap-2">
+            {TIPOS_CHAVE.map((t) => (
+              <button
+                type="button"
+                key={t.id}
+                onClick={() => {
+                  if (t.id === tipoChave.id) return;
+                  setTipoChave(t);
+                  setPixKey("");
+                  setFeedback(null);
+                  novaIntencao();
+                }}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  tipoChave.id === t.id
+                    ? "border-brand-500 bg-brand-500/15 text-brand-300"
+                    : "border-base-700 text-ink-500 hover:text-ink-100"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div>
           <label className="block text-xs font-medium text-ink-300 mb-1.5">
-            Chave Pix do destinatário (CPF)
+            Chave Pix do destinatário ({tipoChave.label.toLowerCase()})
           </label>
           <div className="relative">
             <KeyRound size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-600" />
             <input
               value={pixKey}
               onChange={(e) => {
-                setPixKey(formatarCpf(e.target.value));
+                setPixKey(tipoChave.formatar(e.target.value));
                 novaIntencao();
               }}
-              placeholder="000.000.000-00"
-              inputMode="numeric"
+              placeholder={tipoChave.placeholder}
+              inputMode={tipoChave.inputMode}
+              type={tipoChave.id === "EMAIL" ? "email" : "text"}
               className="w-full rounded-lg bg-field text-base-950 placeholder:text-base-600 pl-9 pr-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-500"
               required
             />
           </div>
         </div>
+
+        <label className="flex items-center gap-2 text-xs text-ink-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={salvarContato}
+            onChange={(e) => setSalvarContato(e.target.checked)}
+            className="accent-brand-500"
+          />
+          Salvar esta chave nos meus contatos após o envio
+        </label>
+        </>
+        )}
 
         <div>
           <label className="block text-xs font-medium text-ink-300 mb-1.5">Valor</label>
@@ -150,11 +319,23 @@ export default function Pix() {
         {r && (
           <div className="text-sm text-mint-400 bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2.5 space-y-1">
             <p className="flex items-center gap-2 font-medium">
-              <CheckCircle2 size={15} /> Pix de {currency(Number(r.valor))} enviado para {r.destino.nome}.
+              <CheckCircle2 size={15} /> Pix de {currency(Number(r.valor))} enviado para {r.destino.nome}
+              {r.destino.externo ? ` (${r.destino.banco ?? "outro banco"})` : ""}.
             </p>
+            {r.chaveDestino && (
+              <p className="text-xs text-ink-300">
+                Chave {({ CPF: "CPF", EMAIL: "E-mail", TELEFONE: "Celular" })[r.tipoChave]}: {r.chaveDestino}
+              </p>
+            )}
             <p className="text-xs text-ink-500">
               Novo saldo: {currency(Number(r.saldoOrigem))} · status {r.status}
             </p>
+            {feedback.contatoSalvo === "salvo" && (
+              <p className="text-xs text-ink-300">Chave salva nos seus contatos.</p>
+            )}
+            {feedback.contatoSalvo === "existente" && (
+              <p className="text-xs text-ink-500">Esta chave já estava nos seus contatos.</p>
+            )}
             <p className="text-[11px] text-ink-500 font-mono break-all">idempotencyKey: {r.idempotencyKey}</p>
           </div>
         )}

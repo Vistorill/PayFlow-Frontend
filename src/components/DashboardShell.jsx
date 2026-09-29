@@ -4,6 +4,7 @@ import {
   ArrowLeftRight,
   CreditCard,
   Receipt,
+  BookUser,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -11,6 +12,7 @@ import { useAuth } from "../context/AuthContext";
 const nav = [
   { to: "/app", label: "Visão geral", icon: LayoutDashboard, end: true },
   { to: "/app/pix", label: "Pix", icon: ArrowLeftRight },
+  { to: "/app/contatos", label: "Contatos", icon: BookUser },
   { to: "/app/cartao", label: "Cartão", icon: CreditCard },
   { to: "/app/extrato", label: "Extrato", icon: Receipt },
 ];
