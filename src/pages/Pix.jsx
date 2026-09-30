@@ -1,7 +1,11 @@
 import { useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Send, CheckCircle2, KeyRound, AlertTriangle, BookUser, UserRound, Landmark } from "lucide-react";
+import { Send, CheckCircle2, KeyRound, AlertTriangle, BookUser, UserRound, Landmark, XCircle, Loader2 } from "lucide-react";
 import { useWallet } from "../context/WalletContext";
+import { useTransacaoAoVivo } from "../hooks/useTransacaoAoVivo";
+import LinhaDoTempoSpi from "../components/LinhaDoTempoSpi";
+import TransacaoDetalhe from "../components/TransacaoDetalhe";
+import { descricaoMotivo } from "../utils/spi";
 import { useContatos } from "../hooks/useContatos";
 import { novaIdempotencyKey } from "../utils/idempotencia";
 import { TIPOS_CHAVE } from "../utils/chavePix";
@@ -58,6 +62,7 @@ export default function Pix() {
   const [value, setValue] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [comprovante, setComprovante] = useState(null);
 
   // Uma chave por TENTATIVA de transferência. Sobrevive a retries (falha de
   // rede / 409 em processamento) e só é descartada quando a tentativa termina
@@ -316,7 +321,8 @@ export default function Pix() {
             {feedback.message}
           </p>
         )}
-        {r && (
+        {r && r.statusSpi && <AcompanhamentoPix r={r} onVerComprovante={() => setComprovante(r.id)} />}
+        {r && !r.statusSpi && (
           <div className="text-sm text-mint-400 bg-mint-400/10 border border-mint-400/20 rounded-lg px-3 py-2.5 space-y-1">
             <p className="flex items-center gap-2 font-medium">
               <CheckCircle2 size={15} /> Pix de {currency(Number(r.valor))} enviado para {r.destino.nome}
@@ -353,9 +359,66 @@ export default function Pix() {
           Saldo suficiente, destino ≠ origem e duplicidade são validados no
           backend. Cada tentativa leva uma chave de idempotência gerada aqui:
           se a rede cair e você reenviar, o servidor reconhece a chave e nunca
-          debita duas vezes.
+          debita duas vezes. Pix para outro banco segue pelo SPI (pacs.008) e
+          a resposta do banco de destino (pacs.002) aparece aqui em segundos.
         </p>
       </form>
+
+      {comprovante && <TransacaoDetalhe transacaoId={comprovante} onClose={() => setComprovante(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Pix para outro banco: a API responde 202 (valor já reservado) e o resultado
+ * chega depois, quando o banco de destino responde pelo SPI. Esta caixa
+ * acompanha o status ao vivo até o fim.
+ */
+function AcompanhamentoPix({ r, onVerComprovante }) {
+  const { refresh } = useWallet();
+  const { t } = useTransacaoAoVivo(r.id, { onFinal: refresh });
+  const statusSpi = t?.statusSpi ?? r.statusSpi;
+  const status = t?.status ?? r.status;
+  const favorecido = `${r.destino.nome} (${r.destino.banco ?? "outro banco"})`;
+
+  const tom =
+    status === "FALHA"
+      ? "border-red-500/20 bg-red-500/10"
+      : status === "CONCLUIDA"
+        ? "border-mint-400/20 bg-mint-400/10"
+        : "border-amber-500/30 bg-amber-500/10";
+
+  return (
+    <div className={`rounded-lg border px-4 py-3 space-y-3 ${tom}`}>
+      <p className="flex items-center gap-2 text-sm font-medium">
+        {status === "CONCLUIDA" && <CheckCircle2 size={15} className="text-mint-400" />}
+        {status === "FALHA" && <XCircle size={15} className="text-red-400" />}
+        {status === "PENDENTE" && <Loader2 size={15} className="text-amber-300 animate-spin" />}
+        {status === "CONCLUIDA" && <>Pix de {currency(Number(r.valor))} concluído para {favorecido}.</>}
+        {status === "FALHA" && <>Pix de {currency(Number(r.valor))} para {favorecido} foi recusado.</>}
+        {status === "PENDENTE" && <>Enviando {currency(Number(r.valor))} para {favorecido}…</>}
+      </p>
+
+      <LinhaDoTempoSpi statusSpi={statusSpi} />
+
+      {status === "FALHA" && (
+        <p className="text-xs text-ink-300">
+          {descricaoMotivo(t?.motivoRejeicao)}. O valor voltou para a sua conta.
+        </p>
+      )}
+      {status === "PENDENTE" && (
+        <p className="text-xs text-ink-500">
+          O valor já saiu do seu saldo e está reservado. Você pode sair desta tela: avisaremos quando o banco de
+          destino responder.
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-ink-500 font-mono break-all">EndToEndId: {r.endToEndId}</p>
+        <button type="button" onClick={onVerComprovante} className="text-xs text-brand-300 hover:text-brand-400">
+          Ver comprovante
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,19 +1,10 @@
-import { useEffect, useState } from "react";
-import { X, Copy, Check, ArrowUpRight, ArrowDownRight, KeyRound } from "lucide-react";
-import { api } from "../api/client";
-
-const currency = (v) =>
-  Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-const dataHora = (iso) =>
-  new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+import { useCallback, useEffect, useState } from "react";
+import { X, Copy, Check, ArrowUpRight, ArrowDownRight, KeyRound, Landmark, AlertTriangle, Undo2 } from "lucide-react";
+import { useWallet } from "../context/WalletContext";
+import { useTransacaoAoVivo } from "../hooks/useTransacaoAoVivo";
+import { currency, dataHora, descricaoMotivo, STATUS_SPI } from "../utils/spi";
+import LinhaDoTempoSpi from "./LinhaDoTempoSpi";
+import Devolucoes from "./Devolucoes";
 
 const TIPO_CHAVE = { CPF: "CPF", EMAIL: "E-mail", TELEFONE: "Celular" };
 
@@ -23,6 +14,8 @@ const TIPO_TRANSACAO = {
   BOLETO: "Boleto",
   CARTAO: "Cartão",
   SAQUE: "Saque",
+  ESTORNO: "Estorno de Pix",
+  DEVOLUCAO: "Devolução de Pix",
 };
 
 const STATUS = {
@@ -32,18 +25,13 @@ const STATUS = {
 };
 
 export default function TransacaoDetalhe({ transacaoId, onClose }) {
-  const [estado, setEstado] = useState({ loading: true, erro: null, t: null });
-
-  useEffect(() => {
-    let ativo = true;
-    api.get(`/transacoes/${transacaoId}`).then(
-      (t) => ativo && setEstado({ loading: false, erro: null, t }),
-      (e) => ativo && setEstado({ loading: false, erro: e.message, t: null }),
-    );
-    return () => {
-      ativo = false;
-    };
-  }, [transacaoId]);
+  const { refresh } = useWallet();
+  // Enquanto o Pix estiver aguardando o SPI, o comprovante se atualiza sozinho.
+  const { loading, erro, t, recarregar } = useTransacaoAoVivo(transacaoId, { onFinal: refresh });
+  const aoMudarDevolucoes = useCallback(() => {
+    recarregar().catch(() => {});
+    refresh();
+  }, [recarregar, refresh]);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -51,13 +39,13 @@ export default function TransacaoDetalhe({ transacaoId, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const { loading, erro, t } = estado;
   const enviada = t?.direcao === "ENVIADA";
   const titulo = t
     ? t.tipo === "PIX"
       ? enviada ? "Pix enviado" : "Pix recebido"
       : TIPO_TRANSACAO[t.tipo] ?? t.tipo
     : "Detalhes da transação";
+  const spi = t?.statusSpi ? STATUS_SPI[t.statusSpi] : null;
 
   return (
     <div
@@ -100,10 +88,47 @@ export default function TransacaoDetalhe({ transacaoId, onClose }) {
                   <p className="text-xs text-ink-500">{dataHora(t.createdAt)}</p>
                 </div>
               </div>
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${STATUS[t.status]?.cls ?? ""}`}>
-                {STATUS[t.status]?.label ?? t.status}
+              <span className={`text-xs px-2.5 py-1 rounded-full border ${(spi ?? STATUS[t.status])?.cls ?? ""}`}>
+                {(spi ?? STATUS[t.status])?.label ?? t.status}
               </span>
             </div>
+
+            {t.statusSpi === "REJEITADO" && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 flex items-start gap-3">
+                <AlertTriangle size={16} className="text-red-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-red-300">O banco de destino recusou este Pix</p>
+                  <p className="text-xs text-ink-300">
+                    {descricaoMotivo(t.motivoRejeicao)}. O valor foi estornado para a sua conta.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(t.tipo === "ESTORNO" || t.tipo === "DEVOLUCAO") && (
+              <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 flex items-start gap-3">
+                <Undo2 size={16} className="text-sky-300 mt-0.5 shrink-0" />
+                <p className="text-xs text-ink-300">
+                  {t.tipo === "ESTORNO"
+                    ? "Estorno automático: o Pix original foi recusado e o valor voltou para sua conta. O lançamento original continua no extrato; o ledger nunca apaga nada."
+                    : "Movimento de uma devolução de Pix (pacs.004)."}
+                </p>
+              </div>
+            )}
+
+            {t.endToEndId && enviada && t.tipo === "PIX" && (
+              <div>
+                <p className="text-xs font-medium text-ink-300 mb-2 flex items-center gap-1.5">
+                  <Landmark size={13} /> Pix para outro banco
+                </p>
+                <div className="rounded-xl border border-base-700 px-4 pt-4">
+                  <LinhaDoTempoSpi statusSpi={t.statusSpi} />
+                </div>
+                {t.status === "PENDENTE" && (
+                  <p className="text-[11px] text-ink-500 mt-2">Atualizando automaticamente…</p>
+                )}
+              </div>
+            )}
 
             {t.chaveDestino && (
               <div className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 flex items-center gap-3">
@@ -127,11 +152,16 @@ export default function TransacaoDetalhe({ transacaoId, onClose }) {
               <Linha rotulo="Status" valor={STATUS[t.status]?.label ?? t.status} />
               <Linha rotulo="Criada em" valor={dataHora(t.createdAt)} />
               <Linha rotulo="Atualizada em" valor={dataHora(t.updatedAt)} />
+              {spi && <Linha rotulo="Situação no SPI" valor={spi.label} />}
+              {t.motivoRejeicao && <Linha rotulo="Motivo da recusa" valor={descricaoMotivo(t.motivoRejeicao)} />}
+              {t.endToEndId && <Linha rotulo="EndToEndId (ISO 20022)" valor={t.endToEndId} mono copiar />}
               <Linha rotulo="ID da transação" valor={t.id} mono copiar />
               {t.idempotencyKey && (
                 <Linha rotulo="Chave de idempotência" valor={t.idempotencyKey} mono copiar />
               )}
             </Secao>
+
+            {t.endToEndId && t.tipo === "PIX" && <Devolucoes transacao={t} onMudou={aoMudarDevolucoes} />}
 
             {t.lancamentos.length > 0 && (
               <Secao titulo="Lançamentos no ledger (partida dobrada)">
@@ -167,7 +197,7 @@ function Parte({ titulo, parte }) {
         {parte.eVoce && <span className="text-ink-500 font-normal"> (você)</span>}
       </p>
       {parte.externo ? (
-        <p className="text-xs text-amber-300">{parte.banco ?? "Outro banco"} · Pix para outro banco</p>
+        <p className="text-xs text-amber-300">{parte.banco ?? "Outro banco"} · outra instituição</p>
       ) : (
         <p className="text-xs text-ink-500">CPF {parte.cpf}</p>
       )}

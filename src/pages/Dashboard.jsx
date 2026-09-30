@@ -6,6 +6,7 @@ import { useWallet } from "../context/WalletContext";
 import { useAuth } from "../context/AuthContext";
 import { creditOffer } from "../data/mockData";
 import TransacaoDetalhe from "../components/TransacaoDetalhe";
+import ChipLancamento from "../components/ChipLancamento";
 
 const currency = (v) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -132,7 +133,10 @@ export default function Dashboard() {
                   {t.value >= 0 ? <ArrowDownRight size={16} /> : <ArrowUpRight size={16} />}
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{t.desc}</p>
+                  <p className="text-sm font-medium">
+                    {t.desc}
+                    <ChipLancamento lancamento={t} />
+                  </p>
                   <p className="text-xs text-ink-500">
                     {new Date(t.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
                   </p>
