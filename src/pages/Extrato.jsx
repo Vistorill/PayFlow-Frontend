@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Search } from "lucide-react";
 import { useWallet } from "../context/WalletContext";
 import TransacaoDetalhe from "../components/TransacaoDetalhe";
+import ChipLancamento from "../components/ChipLancamento";
 
 const TIPO_CHAVE = { CPF: "CPF", EMAIL: "E-mail", TELEFONE: "Celular" };
 
@@ -92,7 +93,10 @@ export default function Extrato() {
                 {t.value >= 0 ? <ArrowDownRight size={16} /> : <ArrowUpRight size={16} />}
               </div>
               <div>
-                <p className="text-sm font-medium">{t.desc}</p>
+                <p className="text-sm font-medium">
+                  {t.desc}
+                  <ChipLancamento lancamento={t} />
+                </p>
                 {t.chave && (
                   <p className="text-xs text-brand-300">
                     Chave {TIPO_CHAVE[t.tipoChave] ?? t.tipoChave}: {t.chave}

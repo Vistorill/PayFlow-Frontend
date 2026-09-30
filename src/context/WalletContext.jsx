@@ -21,6 +21,10 @@ function paraEntrada(l) {
     tipoTransacao: l.tipoTransacao,
     tipoChave: l.tipoChave,
     chave: l.chaveDestino,
+    // Status da transação dona do lançamento: PENDENTE = Pix aguardando o
+    // banco de destino; statusSpi detalha (LIQUIDADO, REJEITADO, DEVOLVIDO...).
+    statusTransacao: l.statusTransacao,
+    statusSpi: l.statusSpi,
   };
 }
 
